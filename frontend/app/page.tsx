@@ -59,6 +59,10 @@ export default function Home() {
     setCoins((c) => c + clickPower)
     setClickAnimation(true)
 
+    // Play Sound
+    const audio = new Audio("/Fahhh - QuickSounds.com.mp3")
+    audio.play()
+
     // Get coordinates
     let clientX, clientY
     if ('touches' in e) {
@@ -304,8 +308,8 @@ export default function Home() {
                     key={chain}
                     onClick={() => setSelectedChain(chain)}
                     className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${selectedChain === chain
-                        ? "bg-background text-accent shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
+                      ? "bg-background text-accent shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
                       }`}
                   >
                     {chain}
