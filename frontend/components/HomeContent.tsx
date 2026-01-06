@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTelegram } from '@/hooks/useTelegram';
 import { TonConnectButton } from '@tonconnect/ui-react';
 import { useAccount, useConnect, useDisconnect } from 'wagmi';
@@ -9,17 +9,59 @@ import { motion } from 'framer-motion';
 type Chain = 'ETH' | 'XRP' | 'TON';
 
 export default function HomeContent() {
-    const { user } = useTelegram();
+    const { user, webApp, initData } = useTelegram();
     const [points, setPoints] = useState(0);
     const [energy, setEnergy] = useState(1000);
     const [chain, setChain] = useState<Chain>('ETH');
 
-    const handleTap = () => {
+    // Sync User with Backend
+    useEffect(() => {
+        if (initData) {
+            const syncUser = async () => {
+                try {
+                    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/user`, {
+                        method: 'GET',
+                        headers: {
+                            'x-telegram-init-data': initData
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        setPoints(Number(data.points));
+                        setEnergy(data.energy);
+                        console.log('User synced:', data);
+                    }
+                } catch (error) {
+                    console.error('Failed to sync user:', error);
+                }
+            };
+
+            syncUser();
+        }
+    }, [initData]);
+
+    const handleTap = async () => {
         if (energy > 0) {
             setPoints((prev) => prev + 1);
             setEnergy((prev) => prev - 1);
-            if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp) {
-                (window as any).Telegram.WebApp.HapticFeedback.impactOccurred('medium');
+
+            if (webApp) {
+                webApp.HapticFeedback.impactOccurred('medium');
+            }
+
+            // Send tap to backend
+            try {
+                await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/tap`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-telegram-init-data': initData
+                    },
+                    body: JSON.stringify({ count: 1 })
+                });
+            } catch (error) {
+                console.error('Tap sync failed:', error);
             }
         }
     };
