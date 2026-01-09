@@ -1,0 +1,17 @@
+{
+    "name": "misbot-telegram-bot",
+    "version": "1.0.0",
+    "description": "Telegram bot for MISBOT with interactive buttons",
+    "main": "bot.js",
+    "scripts": {
+        "start": "node bot.js",
+        "dev": "nodemon bot.js"
+    },
+    "dependencies": {
+        "dotenv": "^16.6.1",
+        "node-telegram-bot-api": "^0.66.0"
+    },
+    "devDependencies": {
+        "nodemon": "^3.0.2"
+    }
+}
