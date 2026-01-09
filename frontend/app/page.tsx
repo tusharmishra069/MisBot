@@ -82,14 +82,23 @@ export default function Home() {
     }
   }, [authData, isDev])
 
-  // Bind Wallet to Backend
+  // Bind Wallet to Backend (optimized to prevent duplicate calls)
+  const walletLinkAttemptedRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (authData && tonWallet && tonWallet.account.address) {
-      setWalletLinkStatus('Attempting...');
+      const currentAddress = tonWallet.account.address;
+
+      // Skip if we already attempted to link this address
+      if (walletLinkAttemptedRef.current === currentAddress) {
+        return;
+      }
+
+      walletLinkAttemptedRef.current = currentAddress;
+      setWalletLinkStatus('Linking...');
+
       if (isDev) {
-        console.log('[Wallet] Attempting to link:', tonWallet.account.address);
-        console.log('[Wallet] authData present:', !!authData);
-        console.log('[Wallet] Backend URL:', process.env.NEXT_PUBLIC_BACKEND_URL);
+        console.log('[Wallet] Linking:', currentAddress);
       }
 
       fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/connect-wallet`, {
@@ -100,42 +109,37 @@ export default function Home() {
         },
         body: JSON.stringify({
           chain: 'TON',
-          address: tonWallet.account.address
+          address: currentAddress
         })
       })
         .then(async res => {
           const data = await res.json();
-          if (isDev) console.log('[Wallet] Response:', res.status, data);
           if (res.ok) {
             setWalletLinkStatus('✅ Linked!');
             setWalletLinkError('');
-            toast.success("Wallet Linked!")
+            toast.success("Wallet Connected!");
           } else {
             setWalletLinkStatus('❌ Failed');
             setWalletLinkError(data.error || 'Unknown error');
-            if (isDev) console.error('[Wallet] Failed:', data);
-            toast.error("Wallet link failed: " + (data.error || 'Unknown error'));
+            walletLinkAttemptedRef.current = null; // Allow retry
+            toast.error("Connection failed: " + (data.error || 'Unknown error'));
           }
         })
         .catch(err => {
           setWalletLinkStatus('❌ Network Error');
           setWalletLinkError(err.message);
-          console.error('[Wallet] Network Error Details:');
-          console.error('[Wallet] Backend URL:', process.env.NEXT_PUBLIC_BACKEND_URL);
-          console.error('[Wallet] Error type:', err.name);
-          console.error('[Wallet] Error message:', err.message);
-          console.error('[Wallet] Full error:', err);
-          toast.error("Network error linking wallet: " + err.message);
+          walletLinkAttemptedRef.current = null; // Allow retry
+          console.error('[Wallet] Error:', err);
+          toast.error("Network error: " + err.message);
         })
     } else {
-      // Debug why it's not triggering
-      if (isDev) {
-        if (!authData) setWalletLinkStatus('No authData');
-        else if (!tonWallet) setWalletLinkStatus('No wallet connected');
-        else if (!tonWallet.account?.address) setWalletLinkStatus('No wallet address');
+      // Reset if wallet disconnected
+      if (!tonWallet && walletLinkAttemptedRef.current) {
+        walletLinkAttemptedRef.current = null;
+        setWalletLinkStatus('');
       }
     }
-  }, [authData, tonWallet, isDev])
+  }, [authData, tonWallet?.account.address, isDev]);
 
   // Sync Taps every 10 seconds
   useEffect(() => {
