@@ -120,8 +120,12 @@ export default function Home() {
         .catch(err => {
           setWalletLinkStatus('❌ Network Error');
           setWalletLinkError(err.message);
-          console.error('[Wallet] Error:', err);
-          toast.error("Network error linking wallet");
+          console.error('[Wallet] Network Error Details:');
+          console.error('[Wallet] Backend URL:', process.env.NEXT_PUBLIC_BACKEND_URL);
+          console.error('[Wallet] Error type:', err.name);
+          console.error('[Wallet] Error message:', err.message);
+          console.error('[Wallet] Full error:', err);
+          toast.error("Network error linking wallet: " + err.message);
         })
     } else {
       // Debug why it's not triggering
