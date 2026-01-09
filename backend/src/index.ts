@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import rateLimit from 'express-rate-limit';
+import { body, validationResult } from 'express-validator';
 import { verifyTelegramWebAppData, parseUserData } from './utils/telegramAuth';
 import { query } from './db';
 
@@ -24,9 +26,43 @@ const initDb = async () => {
 initDb();
 
 const app = express();
-app.use(cors());
+
+// CORS Configuration - Environment-based origin whitelist
+const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'];
+app.use(cors({
+    origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, Postman, etc.)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            console.warn(`[CORS] Blocked request from origin: ${origin}`);
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+}));
+
 app.use(helmet());
 app.use(express.json());
+
+// Rate Limiting - Prevent abuse
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Limit each IP to 100 requests per windowMs
+    message: 'Too many requests from this IP, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+const tapLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 60, // Max 60 taps per minute per IP
+    message: 'Too many tap requests, please slow down.',
+});
+
+app.use(limiter); // Apply to all requests
 
 // --- Middleware ---
 const authenticateTelegram = (req: any, res: any, next: any) => {
@@ -65,6 +101,11 @@ const authenticateTelegram = (req: any, res: any, next: any) => {
     }
 };
 
+// --- Health Check ---
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // --- Routes ---
 
 // 1. Auth / Get User State
@@ -92,15 +133,45 @@ app.get('/user', authenticateTelegram, async (req: any, res) => {
     }
 });
 
+// 1b. Update User Profile
+app.put('/user/profile', authenticateTelegram, async (req: any, res) => {
+    const { id } = req.user;
+    const { username } = req.body;
+
+    // Validate username
+    if (!username || typeof username !== 'string') {
+        return res.status(400).json({ error: 'Username is required' });
+    }
+
+    const trimmedUsername = username.trim();
+    if (trimmedUsername.length < 1 || trimmedUsername.length > 255) {
+        return res.status(400).json({ error: 'Username must be 1-255 characters' });
+    }
+
+    try {
+        await query('UPDATE users SET username = $1 WHERE telegram_id = $2', [trimmedUsername, id]);
+        res.json({ success: true, username: trimmedUsername });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Failed to update profile' });
+    }
+});
+
 // 2. Tap (Core Game Loop)
-app.post('/tap', authenticateTelegram, async (req: any, res) => {
+app.post('/tap', tapLimiter, authenticateTelegram, [
+    body('count').isInt({ min: 1, max: 1000 }).withMessage('Invalid tap count')
+], async (req: any, res: any) => {
+    // Validate input
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ error: 'Invalid tap count' });
+    }
     const { id } = req.user;
     const { count } = req.body;
 
-    console.log(`[Tap] Received ${count} taps from User ${id}`); // TRACE LOG
-
-    // Basic Validation
-    if (!count || count <= 0 || count > 1000) return res.status(400).json({ error: 'Invalid tap count' });
+    if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Tap] Received ${count} taps from User ${id}`);
+    }
 
     try {
         const userRes = await query('SELECT energy, points, last_tap_at FROM users WHERE telegram_id = $1', [id]);
@@ -130,19 +201,20 @@ app.post('/tap', authenticateTelegram, async (req: any, res) => {
 });
 
 // 3. Connect Wallet
-app.post('/connect-wallet', authenticateTelegram, async (req: any, res) => {
+app.post('/connect-wallet', authenticateTelegram, [
+    body('chain').equals('TON').withMessage('Invalid chain'),
+    body('address').notEmpty().withMessage('Address required')
+], async (req: any, res: any) => {
+    // Validate input
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ error: errors.array()[0].msg });
+    }
     const { id, username } = req.user;
     const { chain, address } = req.body;
 
-    console.log(`[Wallet] User ${username} (${id}) attempting to link wallet: ${address}`);
-
-    if (chain !== 'TON') {
-        console.error(`[Wallet] Invalid chain: ${chain}`);
-        return res.status(400).json({ error: 'Invalid chain' });
-    }
-    if (!address) {
-        console.error(`[Wallet] Missing address`);
-        return res.status(400).json({ error: 'Address required' });
+    if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Wallet] User ${username} (${id}) attempting to link wallet: ${address}`);
     }
 
     try {
@@ -204,7 +276,24 @@ app.get('/leaderboard', authenticateTelegram, async (req: any, res) => {
     }
 });
 
+// --- Centralized Error Handler ---
+app.use((err: any, req: any, res: any, next: any) => {
+    console.error('[Error]', err);
+
+    // Don't leak error details in production
+    if (process.env.NODE_ENV === 'production') {
+        res.status(err.status || 500).json({ error: 'Internal server error' });
+    } else {
+        res.status(err.status || 500).json({
+            error: err.message || 'Internal server error',
+            stack: err.stack
+        });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-    console.log(`Backend running on port ${PORT}`);
+    console.log(`✅ Backend running on port ${PORT}`);
+    console.log(`✅ Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`✅ CORS allowed origins: ${allowedOrigins.join(', ')}`);
 });

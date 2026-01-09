@@ -5,6 +5,7 @@ import { useTelegram } from '@/hooks/useTelegram';
 import { TonConnectButton } from '@tonconnect/ui-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Zap, Coins, TrendingUp, Pickaxe, User, Rocket, Crown, Wallet } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function HomeContent() {
     const { user, webApp, initData } = useTelegram();
@@ -29,9 +30,12 @@ export default function HomeContent() {
                         const data = await response.json();
                         setPoints(Number(data.points));
                         setEnergy(data.energy);
+                    } else {
+                        toast.error('Failed to load user data');
                     }
                 } catch (error) {
                     console.error('Failed to sync user:', error);
+                    toast.error('Network error loading data');
                 }
             };
             syncUser();
@@ -49,7 +53,7 @@ export default function HomeContent() {
 
             // Send tap to backend
             try {
-                await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/tap`, {
+                const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/tap`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -57,9 +61,16 @@ export default function HomeContent() {
                     },
                     body: JSON.stringify({ count: 1 })
                 });
+
+                if (!response.ok) {
+                    toast.error('Failed to sync tap');
+                }
             } catch (error) {
                 console.error('Tap sync failed:', error);
+                // Silently fail - user already saw the tap locally
             }
+        } else {
+            toast.warning('Not enough energy!');
         }
     };
 

@@ -39,30 +39,34 @@ export default function Home() {
 
   // Sync User on Load
   useEffect(() => {
-    console.log('[Load] Component mounted');
-    console.log('[Load] authData:', authData ? 'Present' : 'Missing');
-    console.log('[Load] Backend URL:', process.env.NEXT_PUBLIC_BACKEND_URL);
+    if (isDev) {
+      console.log('[Load] Component mounted');
+      console.log('[Load] authData:', authData ? 'Present' : 'Missing');
+      console.log('[Load] Backend URL:', process.env.NEXT_PUBLIC_BACKEND_URL);
+    }
 
     if (authData) {
-      console.log('[Load] Fetching user data...');
+      if (isDev) console.log('[Load] Fetching user data...');
       fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/user`, {
         headers: { 'x-telegram-init-data': authData }
       })
         .then(res => {
-          console.log('[Load] Response status:', res.status);
+          if (isDev) console.log('[Load] Response status:', res.status);
           return res.json();
         })
         .then(data => {
-          console.log('[Load] User data received:', data);
-          console.log('[Load] Points from DB:', data.points);
-          console.log('[Load] Energy from DB:', data.energy);
+          if (isDev) {
+            console.log('[Load] User data received:', data);
+            console.log('[Load] Points from DB:', data.points);
+            console.log('[Load] Energy from DB:', data.energy);
+          }
 
           if (data.points) {
             const pointsValue = Number(data.points);
-            console.log('[Load] Setting coins to:', pointsValue);
+            if (isDev) console.log('[Load] Setting coins to:', pointsValue);
             setCoins(pointsValue);
           } else {
-            console.warn('[Load] No points in response, keeping at 0');
+            if (isDev) console.warn('[Load] No points in response, keeping at 0');
           }
 
           if (data.energy) {
@@ -71,19 +75,22 @@ export default function Home() {
         })
         .catch(err => {
           console.error('[Load] Error fetching user data:', err);
+          toast.error('Failed to load user data');
         })
     } else {
-      console.warn('[Load] No authData - cannot fetch user data');
+      if (isDev) console.warn('[Load] No authData - cannot fetch user data');
     }
-  }, [authData])
+  }, [authData, isDev])
 
   // Bind Wallet to Backend
   useEffect(() => {
     if (authData && tonWallet && tonWallet.account.address) {
       setWalletLinkStatus('Attempting...');
-      console.log('[Wallet] Attempting to link:', tonWallet.account.address);
-      console.log('[Wallet] authData present:', !!authData);
-      console.log('[Wallet] Backend URL:', process.env.NEXT_PUBLIC_BACKEND_URL);
+      if (isDev) {
+        console.log('[Wallet] Attempting to link:', tonWallet.account.address);
+        console.log('[Wallet] authData present:', !!authData);
+        console.log('[Wallet] Backend URL:', process.env.NEXT_PUBLIC_BACKEND_URL);
+      }
 
       fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/connect-wallet`, {
         method: 'POST',
@@ -98,7 +105,7 @@ export default function Home() {
       })
         .then(async res => {
           const data = await res.json();
-          console.log('[Wallet] Response:', res.status, data);
+          if (isDev) console.log('[Wallet] Response:', res.status, data);
           if (res.ok) {
             setWalletLinkStatus('✅ Linked!');
             setWalletLinkError('');
@@ -106,7 +113,7 @@ export default function Home() {
           } else {
             setWalletLinkStatus('❌ Failed');
             setWalletLinkError(data.error || 'Unknown error');
-            console.error('[Wallet] Failed:', data);
+            if (isDev) console.error('[Wallet] Failed:', data);
             toast.error("Wallet link failed: " + (data.error || 'Unknown error'));
           }
         })
@@ -118,11 +125,13 @@ export default function Home() {
         })
     } else {
       // Debug why it's not triggering
-      if (!authData) setWalletLinkStatus('No authData');
-      else if (!tonWallet) setWalletLinkStatus('No wallet connected');
-      else if (!tonWallet.account?.address) setWalletLinkStatus('No wallet address');
+      if (isDev) {
+        if (!authData) setWalletLinkStatus('No authData');
+        else if (!tonWallet) setWalletLinkStatus('No wallet connected');
+        else if (!tonWallet.account?.address) setWalletLinkStatus('No wallet address');
+      }
     }
-  }, [authData, tonWallet])
+  }, [authData, tonWallet, isDev])
 
   // Sync Taps every 10 seconds
   useEffect(() => {
@@ -461,7 +470,6 @@ export default function Home() {
               <p className="text-xs text-muted-foreground">Web3 Mining Simulator</p>
             </div>
             <div className="flex items-center gap-2">
-
               <button
                 onClick={handleWalletConnect}
                 className="h-8 px-3 bg-secondary/50 hover:bg-secondary rounded-full flex items-center gap-2 text-xs font-medium transition-colors"
@@ -470,7 +478,12 @@ export default function Home() {
                 <span className="text-xs">{getWalletButtonText()}</span>
               </button>
 
-              <Users className="w-5 h-5 text-accent" />
+              <button
+                onClick={() => window.location.href = '/profile'}
+                className="h-8 w-8 bg-secondary/50 hover:bg-secondary rounded-full flex items-center justify-center transition-colors"
+              >
+                <Users className="w-4 h-4 text-accent" />
+              </button>
             </div>
           </div>
         </div>
@@ -480,16 +493,6 @@ export default function Home() {
       </div>
 
       {/* Bottom Navigation */}
-      {/* Debug Panel - Remove after fixing */}
-      <div className="fixed top-16 right-2 bg-black/90 text-white text-[10px] p-2 rounded border border-white/20 max-w-[200px] z-50">
-        <div className="font-bold mb-1">🔍 Debug</div>
-        <div>Auth: {authData ? '✅' : '❌'}</div>
-        <div>Coins: {coins}</div>
-        <div>Wallet: {tonWallet?.account?.address ? tonWallet.account.address.slice(0, 8) + '...' : '❌'}</div>
-        <div>Link: {walletLinkStatus}</div>
-        {walletLinkError && <div className="text-red-400 text-[9px]">{walletLinkError}</div>}
-      </div>
-
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
     </main>
   )
