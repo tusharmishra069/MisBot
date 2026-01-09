@@ -1,50 +1,182 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Zap, Coins, Users, TrendingUp, Crown, Wallet, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import MinerCard from "@/components/miner-card"
 import ClickableAvatar from "@/components/clickable-avatar"
 import UpgradeCard from "@/components/upgrade-card"
 import BottomNav from "@/components/bottom-nav"
 import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react'
 
+import { useTelegram } from '@/hooks/useTelegram'
+
 export default function Home() {
+  const { user, initData } = useTelegram()
   const [coins, setCoins] = useState(0)
   const [clickPower, setClickPower] = useState(1)
+  const [energy, setEnergy] = useState(1000) // Added Energy State
   const [perSecond, setPerSecond] = useState(5)
   const [activeTab, setActiveTab] = useState<"mine" | "earn" | "upgrades" | "league">("mine")
   const [clickAnimation, setClickAnimation] = useState(false)
 
-  // Rate Limiting Config
-  const RATE_LIMIT_WINDOW = 60 * 60 * 1000 // 1 hour
-  const RATE_LIMIT_MAX_TAPS = 1000
+
 
   // Wallet States
   const [tonConnectUI] = useTonConnectUI()
   const tonWallet = useTonWallet()
 
   const [clicks, setClicks] = useState<{ id: number; x: number; y: number; value: number }[]>([])
+  const unsavedTapsRef = useRef(0)
+
+  // Sync User on Load
+  useEffect(() => {
+    if (initData) {
+      fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/user`, {
+        headers: { 'x-telegram-init-data': initData }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.points) setCoins(Number(data.points))
+          if (data.energy) setEnergy(Number(data.energy))
+        })
+        .catch(console.error)
+    }
+  }, [initData])
+
+  // Sync Taps every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const count = unsavedTapsRef.current
+      if (count > 0 && initData) {
+        // Reset ref immediately to avoid double counting if request is slow
+        unsavedTapsRef.current = 0
+
+        fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/tap`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-telegram-init-data': initData
+          },
+          body: JSON.stringify({ count })
+        })
+          .then(res => {
+            if (!res.ok) {
+              // Restore taps if failed (simple retry logic)
+              unsavedTapsRef.current += count
+            }
+          })
+          .catch(() => {
+            unsavedTapsRef.current += count
+          })
+      }
+    }, 10000)
+
+    return () => clearInterval(interval)
+  }, [initData])
+
+  // Constants
+  const RATE_LIMIT_WINDOW = 10000 // 10 seconds
+  const RATE_LIMIT_MAX_TAPS = 200 // Max taps per window
+  const COOLDOWN_DURATION = 30000 // 30 seconds (Penalty)
+
+  // New Rate Limit State
+  const [cooldownEndTime, setCooldownEndTime] = useState(0)
+  const [timeLeft, setTimeLeft] = useState(0)
+
+  // Window State
+  const [tapsLeft, setTapsLeft] = useState(RATE_LIMIT_MAX_TAPS)
+  const [windowTimer, setWindowTimer] = useState(0)
+
+  // Timer Countdown Effect
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now()
+
+      // Cooldown Timer
+      if (cooldownEndTime > 0) {
+        setTimeLeft(Math.max(0, cooldownEndTime - now))
+        if (now >= cooldownEndTime) setCooldownEndTime(0)
+      } else {
+        setTimeLeft(0)
+      }
+
+      // Window Timer
+      const storedTaps = JSON.parse(localStorage.getItem('tapHistory') || '{"count": 0, "windowStart": 0}')
+      const windowRemaining = Math.max(0, RATE_LIMIT_WINDOW - (now - storedTaps.windowStart))
+      setWindowTimer(windowRemaining)
+
+      if (now - storedTaps.windowStart > RATE_LIMIT_WINDOW) {
+        setTapsLeft(RATE_LIMIT_MAX_TAPS)
+      } else {
+        setTapsLeft(Math.max(0, RATE_LIMIT_MAX_TAPS - storedTaps.count))
+      }
+
+    }, 100)
+    return () => clearInterval(interval)
+  }, [cooldownEndTime])
+
+
+  const formatTime = (ms: number) => {
+    const seconds = Math.floor((ms / 1000) % 60)
+    return `${seconds.toString().padStart(2, '0')}s`
+  }
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement> | React.TouchEvent<HTMLButtonElement>) => {
-    // Rate Limit Check
     const now = Date.now()
-    const storedTaps = JSON.parse(localStorage.getItem('tapHistory') || '{"count": 0, "windowStart": 0}')
 
+    // 1. Check if Cooldown is Active
+    if (now < cooldownEndTime) {
+      toast.error("Cooldown Active! Please wait.", {
+        description: "Mining is temporarily disabled.",
+        duration: 2000
+      })
+      return
+    }
+
+    // 2. Load State
+    let storedTaps = JSON.parse(localStorage.getItem('tapHistory') || '{"count": 0, "windowStart": 0}')
     let { count, windowStart } = storedTaps
 
+    // 3. Check Window Expiry (Session Limit)
     if (now - windowStart > RATE_LIMIT_WINDOW) {
-      // Reset window
+      if (count > 0) {
+        const newCooldownEnd = now + COOLDOWN_DURATION
+        setCooldownEndTime(newCooldownEnd)
+        setTimeLeft(COOLDOWN_DURATION)
+        localStorage.setItem('tapHistory', JSON.stringify({ count: 0, windowStart: 0 }))
+
+        toast.warning("Mining Session Ended!", {
+          description: "Cooldown started for 30s.",
+          duration: 4000
+        })
+        return
+      }
       windowStart = now
       count = 0
     }
 
+    // 4. Check Burst Limit
     if (count >= RATE_LIMIT_MAX_TAPS) {
-      alert("Rate limit reached! You can only tap 1000 times per hour.")
+      const newCooldownEnd = now + COOLDOWN_DURATION
+      setCooldownEndTime(newCooldownEnd)
+      setTimeLeft(COOLDOWN_DURATION)
+      localStorage.setItem('tapHistory', JSON.stringify({ count: 0, windowStart: 0 }))
+
+      toast.warning("Rate Limit Reached!", {
+        description: "Cooldown started for 30s.",
+        duration: 4000
+      })
       return
     }
 
-    // Update Storage
-    localStorage.setItem('tapHistory', JSON.stringify({ count: count + 1, windowStart }))
+    // 5. Valid Tap
+    const newCount = count + 1
+    localStorage.setItem('tapHistory', JSON.stringify({ count: newCount, windowStart }))
+
+    // Immediate UI Update
+    setTapsLeft(Math.max(0, RATE_LIMIT_MAX_TAPS - newCount))
+    setWindowTimer(Math.max(0, RATE_LIMIT_WINDOW - (now - windowStart)))
 
     // Execute Tap
     setCoins((c) => c + clickPower)
@@ -53,6 +185,9 @@ export default function Home() {
     // Play Sound
     const audio = new Audio("/Fahhh - QuickSounds.com.mp3")
     audio.play()
+
+    // Queue Tap for Sync
+    unsavedTapsRef.current += 1
 
     // Get coordinates
     let clientX, clientY
@@ -115,7 +250,26 @@ export default function Home() {
               <h1 className="text-5xl font-black bg-gradient-to-r from-accent via-purple-400 to-accent bg-clip-text text-transparent">
                 {Math.floor(coins).toLocaleString()}
               </h1>
-              <p className="text-xs text-muted-foreground mt-2">+{perSecond.toFixed(1)}/sec</p>
+
+
+              {/* Rate Limit Stats */}
+              {/* Rate Limit Stats */}
+              {cooldownEndTime > 0 ? (
+                <div className="mt-4 flex items-center justify-center gap-4 text-xs font-mono bg-red-500/20 text-red-400 py-1 px-3 rounded-full mx-auto w-fit border border-red-500/30 animate-pulse">
+                  <span className="font-bold">
+                    🚫 Cooldown: {formatTime(timeLeft)}
+                  </span>
+                </div>
+              ) : (
+                <div className="mt-4 flex items-center justify-center gap-4 text-xs font-mono bg-secondary/30 py-1 px-3 rounded-full mx-auto w-fit border border-white/5">
+                  <span className={tapsLeft === 0 ? "text-red-500 font-bold" : "text-green-400"}>
+                    ⚡ {tapsLeft}/{RATE_LIMIT_MAX_TAPS}
+                  </span>
+                  <span className="text-muted-foreground border-l border-white/10 pl-4">
+                    ⏳ {formatTime(windowTimer)}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Clickable Avatar */}

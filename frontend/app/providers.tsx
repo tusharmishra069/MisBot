@@ -6,8 +6,7 @@ import { ReactNode } from 'react';
 
 const queryClient = new QueryClient();
 
-// 2. TonConnect Manifest (Replace with real URL in production)
-// 2. TonConnect Manifest
+//  TonConnect Manifest
 const manifestUrl = 'https://mis-bot.vercel.app/tonconnect-manifest.json';
 
 export function Providers({ children }: { children: ReactNode }) {
