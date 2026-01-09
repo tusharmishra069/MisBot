@@ -6,8 +6,6 @@ import MinerCard from "@/components/miner-card"
 import ClickableAvatar from "@/components/clickable-avatar"
 import UpgradeCard from "@/components/upgrade-card"
 import BottomNav from "@/components/bottom-nav"
-import { useAccount, useConnect, useDisconnect } from 'wagmi'
-import { injected } from 'wagmi/connectors'
 import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react'
 
 export default function Home() {
@@ -16,21 +14,14 @@ export default function Home() {
   const [perSecond, setPerSecond] = useState(5)
   const [activeTab, setActiveTab] = useState<"mine" | "earn" | "upgrades" | "league">("mine")
   const [clickAnimation, setClickAnimation] = useState(false)
-  const [selectedChain, setSelectedChain] = useState<"XRP" | "ETH" | "TON">("XRP")
 
   // Rate Limiting Config
   const RATE_LIMIT_WINDOW = 60 * 60 * 1000 // 1 hour
   const RATE_LIMIT_MAX_TAPS = 1000
 
   // Wallet States
-  const { address: ethAddress, isConnected: isEthConnected } = useAccount()
-  const { connect: connectEth } = useConnect()
-  const { disconnect: disconnectEth } = useDisconnect()
-
   const [tonConnectUI] = useTonConnectUI()
   const tonWallet = useTonWallet()
-
-  const [isXrpConnected, setIsXrpConnected] = useState(false) // Simulated XRP state
 
   const [clicks, setClicks] = useState<{ id: number; x: number; y: number; value: number }[]>([])
 
@@ -86,39 +77,16 @@ export default function Home() {
   }
 
   const handleWalletConnect = () => {
-    switch (selectedChain) {
-      case "ETH":
-        if (isEthConnected) {
-          disconnectEth()
-        } else {
-          connectEth({ connector: injected() })
-        }
-        break
-      case "TON":
-        if (tonWallet) {
-          tonConnectUI.disconnect()
-        } else {
-          tonConnectUI.openModal()
-        }
-        break
-      case "XRP":
-        setIsXrpConnected(!isXrpConnected) // Simulated
-        break
+    if (tonWallet) {
+      tonConnectUI.disconnect()
+    } else {
+      tonConnectUI.openModal()
     }
   }
 
   const getWalletButtonText = () => {
-    switch (selectedChain) {
-      case "ETH":
-        if (isEthConnected && ethAddress) return `${ethAddress.slice(0, 4)}...${ethAddress.slice(-4)}`
-        return "Connect ETH"
-      case "TON":
-        if (tonWallet && tonWallet.account.address) return `${tonWallet.account.address.slice(0, 4)}...${tonWallet.account.address.slice(-4)}`
-        return "Connect TON"
-      case "XRP":
-        if (isXrpConnected) return "rXRP...Wallet"
-        return "Connect XRP"
-    }
+    if (tonWallet && tonWallet.account.address) return `${tonWallet.account.address.slice(0, 4)}...${tonWallet.account.address.slice(-4)}`
+    return "Connect TON"
   }
 
 
@@ -302,20 +270,6 @@ export default function Home() {
               <p className="text-xs text-muted-foreground">Web3 Mining Simulator</p>
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex bg-secondary/50 rounded-lg p-1">
-                {(["XRP", "ETH", "TON"] as const).map((chain) => (
-                  <button
-                    key={chain}
-                    onClick={() => setSelectedChain(chain)}
-                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${selectedChain === chain
-                      ? "bg-background text-accent shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                      }`}
-                  >
-                    {chain}
-                  </button>
-                ))}
-              </div>
 
               <button
                 onClick={handleWalletConnect}

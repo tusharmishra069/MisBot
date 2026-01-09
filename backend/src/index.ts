@@ -96,7 +96,7 @@ app.post('/connect-wallet', authenticateTelegram, async (req: any, res) => {
     const { id } = req.user;
     const { chain, address } = req.body;
 
-    if (!['ETH', 'XRP', 'TON'].includes(chain)) return res.status(400).json({ error: 'Invalid chain' });
+    if (chain !== 'TON') return res.status(400).json({ error: 'Invalid chain' });
     if (!address) return res.status(400).json({ error: 'Address required' });
 
     try {

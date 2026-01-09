@@ -1,7 +1,7 @@
 {
-    "url": "https://mis-bot.vercel.app",
+    "url": "https://mis-bot.vercel.app/",
     "name": "Misbot",
-    "iconUrl": "https://ton.org/download/ton_symbol.png",
-    "termsOfUseUrl": "https://ton.org/terms",
-    "privacyPolicyUrl": "https://ton.org/privacy"
+    "iconUrl": "https://mis-bot.vercel.app/spade.png",
+    "termsOfUseUrl": "https://mis-bot.vercel.app/terms",
+    "privacyPolicyUrl": "https://mis-bot.vercel.app/privacy"
 }

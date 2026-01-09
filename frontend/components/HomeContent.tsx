@@ -3,45 +3,15 @@
 import { useState, useEffect } from 'react';
 import { useTelegram } from '@/hooks/useTelegram';
 import { TonConnectButton } from '@tonconnect/ui-react';
-import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Zap, Coins, TrendingUp, Pickaxe, User, Rocket, Crown, Wallet } from 'lucide-react';
-
-type Chain = 'ETH' | 'XRP' | 'TON';
 
 export default function HomeContent() {
     const { user, webApp, initData } = useTelegram();
     const [points, setPoints] = useState(0);
     const [energy, setEnergy] = useState(1000);
-    const [chain, setChain] = useState<Chain>('ETH');
-    const [xrpAddress, setXrpAddress] = useState('');
     const [activeTab, setActiveTab] = useState('mine');
     const [showWalletModal, setShowWalletModal] = useState(false);
-
-    const handleLinkWallet = async (chainType: Chain, address: string) => {
-        if (!address) return alert('Please enter an address');
-
-        try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/connect-wallet`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-telegram-init-data': initData
-                },
-                body: JSON.stringify({ chain: chainType, address })
-            });
-
-            if (res.ok) {
-                alert(`${chainType} Wallet Linked!`);
-                setXrpAddress(''); // Clear input
-            } else {
-                alert('Failed to link wallet');
-            }
-        } catch (e) {
-            console.error(e);
-            alert('Error linking wallet');
-        }
-    };
 
     // Sync User with Backend
     useEffect(() => {
@@ -184,39 +154,8 @@ export default function HomeContent() {
                         >
                             <div className="w-12 h-1 bg-gray-600 rounded-full self-center mb-4"></div>
                             <h3 className="text-xl font-bold text-white mb-2">Connect Wallet</h3>
-
-                            <div className="flex bg-[#2c2c2e] p-1 rounded-xl mb-4">
-                                {['ETH', 'TON', 'XRP'].map((c) => (
-                                    <button
-                                        key={c}
-                                        onClick={() => setChain(c as Chain)}
-                                        className={`flex-1 py-2 rounded-lg text-sm font-bold transition ${chain === c ? 'bg-orange-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-                                    >
-                                        {c}
-                                    </button>
-                                ))}
-                            </div>
-
                             <div className="min-h-[150px] flex flex-col items-center justify-center">
-                                {chain === 'TON' && <TonConnectButton />}
-                                {chain === 'ETH' && <EthWalletButton />}
-                                {chain === 'XRP' && (
-                                    <div className="w-full">
-                                        <input
-                                            type="text"
-                                            placeholder="Enter XRP Address"
-                                            className="bg-black/50 border border-white/10 text-white p-3 rounded-xl w-full mb-3 focus:outline-none focus:border-orange-500 transition"
-                                            value={xrpAddress}
-                                            onChange={(e) => setXrpAddress(e.target.value)}
-                                        />
-                                        <button
-                                            onClick={() => handleLinkWallet('XRP', xrpAddress)}
-                                            className="w-full bg-blue-600 py-3 rounded-xl font-bold hover:bg-blue-500 transition"
-                                        >
-                                            Link XRP Wallet
-                                        </button>
-                                    </div>
-                                )}
+                                <TonConnectButton />
                             </div>
                         </motion.div>
                     </div>
@@ -235,33 +174,4 @@ function NavButton({ icon: Icon, label, active, onClick }: { icon: any, label: s
             </span>
         </button>
     );
-}
-
-function EthWalletButton() {
-    const { address, isConnected } = useAccount();
-    const { connect, connectors } = useConnect();
-    const { disconnect } = useDisconnect();
-
-    if (isConnected) {
-        return (
-            <button onClick={() => disconnect()} className="w-full bg-red-500/10 text-red-500 py-3 rounded-xl font-bold border border-red-500/20">
-                {address?.slice(0, 6)}...{address?.slice(-4)} (Disconnect)
-            </button>
-        )
-    }
-
-    return (
-        <div className="flex flex-col gap-2 w-full">
-            {connectors.map((connector) => (
-                <button
-                    key={connector.uid}
-                    onClick={() => connect({ connector })}
-                    className="bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-3 rounded-xl text-sm font-bold flex items-center justify-between group transition"
-                >
-                    Connect {connector.name}
-                    <Wallet size={16} className="text-gray-500 group-hover:text-white transition" />
-                </button>
-            ))}
-        </div>
-    )
 }
