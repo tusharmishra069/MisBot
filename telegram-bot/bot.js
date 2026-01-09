@@ -2,6 +2,7 @@
 // This sends a welcome message with interactive buttons
 
 const TelegramBot = require('node-telegram-bot-api');
+const http = require('http');
 require('dotenv').config();
 
 // Get bot token from environment
@@ -20,7 +21,22 @@ const WEB_APP_URL = (process.env.WEB_APP_URL || 'https://mis-bot.vercel.app').re
 // Create bot instance
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
-console.log('✅ MISBOT Telegram Bot is running...');
+// Create HTTP server for Render Web Service (free tier requirement)
+const PORT = process.env.PORT || 3000;
+const server = http.createServer((req, res) => {
+    if (req.url === '/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok', bot: 'running' }));
+    } else {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('MISBOT Telegram Bot is running');
+    }
+});
+
+server.listen(PORT, () => {
+    console.log(`✅ HTTP server listening on port ${PORT}`);
+    console.log('✅ MISBOT Telegram Bot is running...');
+});
 
 
 
