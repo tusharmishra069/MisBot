@@ -412,7 +412,7 @@ export default function Home() {
                 className="h-8 px-3 bg-secondary/50 hover:bg-secondary rounded-full flex items-center gap-2 text-xs font-medium transition-colors"
               >
                 <Wallet className="w-4 h-4 text-accent" />
-                <span className="hidden sm:inline-block">{getWalletButtonText()}</span>
+                <span className="text-xs">{getWalletButtonText()}</span>
               </button>
 
               <Users className="w-5 h-5 text-accent" />

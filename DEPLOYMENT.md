@@ -1,80 +1,41 @@
-# Deployment Guide - Misbot (Web3 Tap-to-Earn)
+# Production Deployment Guide
 
-This guide covers setting up the PostgreSQL database, deploying Smart Contracts to testnets, and running the Frontend/Backend services.
+Your MisBot is code-complete and production-ready. 
+Follow these steps to deploy to the live internet.
 
-## 1. Database Setup (PostgreSQL)
+## 1. Backend Deployment (Render / Railway / Heroku)
 
-You need a PostgreSQL instance. You can run one locally via Docker:
+Deploy the `backend` folder.
 
-```bash
-docker run --name misbot-db -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres
-```
+**Required Environment Variables:**
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `PORT` | `3001` | Port to listen on (Render sets this automatically) |
+| `DATABASE_URL` | `postgresql://...` | Your NeonDB Connection String |
+| `BOT_TOKEN` | `...` | Your Telegram Bot Token (from BotFather) |
+| `NODE_ENV` | `production` | **CRITICAL**: Disables the insecure Dev Bypass |
 
-Initialize the schema:
-```bash
-psql -h localhost -U postgres -f database/init.sql
-```
+---
 
-## 2. Backend Setup (Node.js)
+## 2. Frontend Deployment (Vercel)
 
-1. Navigate to backend: `cd backend`
-2. Install dependencies: `npm install`
-3. Configure Environment:
-   Copy `.env.example` to `.env` and fill in:
-   - `DATABASE_URL`: `postgresql://postgres:password@localhost:5432/misbot`
-   - `BOT_TOKEN`: Get this from @BotFather in Telegram.
-   - `ETH_PRIVATE_KEY`: Your Sepolia private key (for verifying claims).
-   - `XRP_SEED`: Your XRPL Testnet seed.
-   - `TON_MNEMONIC`: Your TON Testnet wallet mnemonic.
+Deploy the `frontend` folder.
 
-4. Run Server:
-   ```bash
-   npm run dev
-   ```
-   Server will start on `http://localhost:3001`.
+**Required Environment Variables:**
+| Variable | Value | Update Instructions |
+|----------|-------|---------------------|
+| `NEXT_PUBLIC_BACKEND_URL` | `https://your-backend.onrender.com` | URL of your deployed Backend |
+| `NEXT_PUBLIC_APP_URL` | `https://your-app.vercel.app` | URL of your deployed Frontend |
 
-## 3. Frontend Setup (Next.js)
+### ⚠️ Important Note
+You **DO NOT** need to set `NEXT_PUBLIC_TON_MANIFEST_URL`. 
+The app now automatically generates it at `${NEXT_PUBLIC_APP_URL}/api/manifest`.
 
-1. Navigate to frontend: `cd frontend`
-2. Install dependencies: `npm install`
-3. Configure Environment:
-   Copy `.env.example` to `.env.local` or just `.env`:
-   - `NEXT_PUBLIC_API_URL`: `http://localhost:3001` (or your ngrok URL for real device testing).
-   - `NEXT_PUBLIC_BOT_USERNAME`: Your bot's username.
+---
 
-4. Run App:
-   ```bash
-   npm run dev
-   ```
-   App will start on `http://localhost:3000`.
+## 3. Telegram Bot Setup (BotFather)
 
-## 4. Telegram Integration
-
-1. Create a Bot via @BotFather.
-2. Create a **New App** attached to that bot.
-3. Set the **Menu Button URL** to your hosted frontend URL (must be HTTPS! Use `ngrok http 3000` for local dev).
-
-## 5. Smart Contracts
-
-### Ethereum (Sepolia)
-Deploy `MisToken.sol` and `MisClaim.sol`:
-```bash
-# Use Remix or Hardhat
-# 1. Deploy Token
-# 2. Deploy Claim(TokenAddress, BackendSignerAddress)
-# 3. Call Token.transferOwnership(ClaimAddress) OR mint tokens to ClaimAddress.
-```
-
-### TON (Testnet)
-Use Blueprint or manually deploy via scripts:
-```bash
-# Example logic in contracts/ton/
-# Real deployment requires ton-cli or blueprint
-```
-
-### XRP (Testnet)
-Run the issuance script to setup the Issuer and Hot Wallet:
-```bash
-cd contracts/xrp
-node issueToken.js
-```
+1. Go to [@BotFather](https://t.me/BotFather)
+2. Select your bot
+3. Go to **Bot Settings** > **Menu Button** > **Configure Menu Button**
+4. Send the URL of your Vercel App (e.g., `https://mis-bot.vercel.app`)

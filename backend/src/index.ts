@@ -32,29 +32,32 @@ app.use(express.json());
 const authenticateTelegram = (req: any, res: any, next: any) => {
     const initData = req.headers['x-telegram-init-data'];
 
-    if (!initData) {
-        console.warn(`[Auth] Rejected: Missing initData. Headers:`, req.headers);
-        return res.status(401).json({ error: 'Missing initData' });
+    // DEV BYPASS: Allow testing on localhost without Telegram
+    if (process.env.NODE_ENV !== 'production' && initData === 'dev_data') {
+        req.user = {
+            id: 123456789,
+            username: 'test_user',
+            first_name: 'Test',
+            last_name: 'User'
+        };
+        return next();
     }
 
-    try {
-        // Log the received data (truncated for safety)
-        // console.log(`[Auth] Verifying: ${initData.substring(0, 20)}...`);
+    if (!initData) return res.status(401).json({ error: 'Missing initData' });
 
+    try {
         const isValid = verifyTelegramWebAppData(initData as string);
 
         if (!isValid) {
-            console.error(`[Auth] ❌ Signature Verification Failed!`);
-            console.error(`[Auth] Hint: Check your BOT_TOKEN in backend .env`);
+            console.error(`[Auth] Signature Verification Failed`);
             return res.status(403).json({ error: 'Invalid initData signature' });
         }
 
         const user = parseUserData(initData as string);
         req.user = user;
-        // console.log(`[Auth] ✅ Authenticated User: ${user.username} (${user.id})`);
         next();
     } catch (e) {
-        console.error(`[Auth] Crash during verification:`, e);
+        console.error(`[Auth] Error:`, e);
         return res.status(403).json({ error: 'Auth failed' });
     }
 };
@@ -89,7 +92,9 @@ app.get('/user', authenticateTelegram, async (req: any, res) => {
 // 2. Tap (Core Game Loop)
 app.post('/tap', authenticateTelegram, async (req: any, res) => {
     const { id } = req.user;
-    const { count } = req.body; // e.g. user claims they tapped 5 times since last sync
+    const { count } = req.body;
+
+    console.log(`[Tap] Received ${count} taps from User ${id}`); // TRACE LOG
 
     // Basic Validation
     if (!count || count <= 0 || count > 1000) return res.status(400).json({ error: 'Invalid tap count' });
