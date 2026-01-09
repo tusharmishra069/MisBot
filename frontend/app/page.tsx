@@ -33,24 +33,58 @@ export default function Home() {
   const [clicks, setClicks] = useState<{ id: number; x: number; y: number; value: number }[]>([])
   const unsavedTapsRef = useRef(0)
 
+  // Debug state for wallet linking
+  const [walletLinkStatus, setWalletLinkStatus] = useState<string>('Not attempted')
+  const [walletLinkError, setWalletLinkError] = useState<string>('')
+
   // Sync User on Load
   useEffect(() => {
+    console.log('[Load] Component mounted');
+    console.log('[Load] authData:', authData ? 'Present' : 'Missing');
+    console.log('[Load] Backend URL:', process.env.NEXT_PUBLIC_BACKEND_URL);
+
     if (authData) {
+      console.log('[Load] Fetching user data...');
       fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/user`, {
         headers: { 'x-telegram-init-data': authData }
       })
-        .then(res => res.json())
-        .then(data => {
-          if (data.points) setCoins(Number(data.points))
-          if (data.energy) setEnergy(Number(data.energy))
+        .then(res => {
+          console.log('[Load] Response status:', res.status);
+          return res.json();
         })
-        .catch(console.error)
+        .then(data => {
+          console.log('[Load] User data received:', data);
+          console.log('[Load] Points from DB:', data.points);
+          console.log('[Load] Energy from DB:', data.energy);
+
+          if (data.points) {
+            const pointsValue = Number(data.points);
+            console.log('[Load] Setting coins to:', pointsValue);
+            setCoins(pointsValue);
+          } else {
+            console.warn('[Load] No points in response, keeping at 0');
+          }
+
+          if (data.energy) {
+            setEnergy(Number(data.energy));
+          }
+        })
+        .catch(err => {
+          console.error('[Load] Error fetching user data:', err);
+        })
+    } else {
+      console.warn('[Load] No authData - cannot fetch user data');
     }
   }, [authData])
 
   // Bind Wallet to Backend
   useEffect(() => {
     if (authData && tonWallet && tonWallet.account.address) {
+      setWalletLinkStatus('Attempting...');
+      console.log('[Wallet] Attempting to link:', tonWallet.account.address);
+      console.log('[Wallet] authData present:', !!authData);
+      console.log('[Wallet] Backend URL:', process.env.NEXT_PUBLIC_BACKEND_URL);
+
       fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/connect-wallet`, {
         method: 'POST',
         headers: {
@@ -62,10 +96,31 @@ export default function Home() {
           address: tonWallet.account.address
         })
       })
-        .then(res => {
-          if (res.ok) toast.success("Wallet Linked!")
+        .then(async res => {
+          const data = await res.json();
+          console.log('[Wallet] Response:', res.status, data);
+          if (res.ok) {
+            setWalletLinkStatus('✅ Linked!');
+            setWalletLinkError('');
+            toast.success("Wallet Linked!")
+          } else {
+            setWalletLinkStatus('❌ Failed');
+            setWalletLinkError(data.error || 'Unknown error');
+            console.error('[Wallet] Failed:', data);
+            toast.error("Wallet link failed: " + (data.error || 'Unknown error'));
+          }
         })
-        .catch(console.error)
+        .catch(err => {
+          setWalletLinkStatus('❌ Network Error');
+          setWalletLinkError(err.message);
+          console.error('[Wallet] Error:', err);
+          toast.error("Network error linking wallet");
+        })
+    } else {
+      // Debug why it's not triggering
+      if (!authData) setWalletLinkStatus('No authData');
+      else if (!tonWallet) setWalletLinkStatus('No wallet connected');
+      else if (!tonWallet.account?.address) setWalletLinkStatus('No wallet address');
     }
   }, [authData, tonWallet])
 
@@ -425,6 +480,16 @@ export default function Home() {
       </div>
 
       {/* Bottom Navigation */}
+      {/* Debug Panel - Remove after fixing */}
+      <div className="fixed top-16 right-2 bg-black/90 text-white text-[10px] p-2 rounded border border-white/20 max-w-[200px] z-50">
+        <div className="font-bold mb-1">🔍 Debug</div>
+        <div>Auth: {authData ? '✅' : '❌'}</div>
+        <div>Coins: {coins}</div>
+        <div>Wallet: {tonWallet?.account?.address ? tonWallet.account.address.slice(0, 8) + '...' : '❌'}</div>
+        <div>Link: {walletLinkStatus}</div>
+        {walletLinkError && <div className="text-red-400 text-[9px]">{walletLinkError}</div>}
+      </div>
+
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
     </main>
   )

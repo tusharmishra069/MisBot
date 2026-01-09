@@ -49,7 +49,10 @@ const authenticateTelegram = (req: any, res: any, next: any) => {
         const isValid = verifyTelegramWebAppData(initData as string);
 
         if (!isValid) {
-            console.error(`[Auth] Signature Verification Failed`);
+            // CRITICAL PRODUCTION LOG
+            console.error(`[Auth Failed] Signature Mismatch!`);
+            console.error(`[Auth Failed] Server Token: ${process.env.BOT_TOKEN ? 'Set' : 'MISSING'}`);
+            console.error(`[Auth Failed] Received Data Length: ${initData.length}`);
             return res.status(403).json({ error: 'Invalid initData signature' });
         }
 
@@ -57,7 +60,7 @@ const authenticateTelegram = (req: any, res: any, next: any) => {
         req.user = user;
         next();
     } catch (e) {
-        console.error(`[Auth] Error:`, e);
+        console.error(`[Auth Crash]`, e);
         return res.status(403).json({ error: 'Auth failed' });
     }
 };
@@ -128,20 +131,29 @@ app.post('/tap', authenticateTelegram, async (req: any, res) => {
 
 // 3. Connect Wallet
 app.post('/connect-wallet', authenticateTelegram, async (req: any, res) => {
-    const { id } = req.user;
+    const { id, username } = req.user;
     const { chain, address } = req.body;
 
-    if (chain !== 'TON') return res.status(400).json({ error: 'Invalid chain' });
-    if (!address) return res.status(400).json({ error: 'Address required' });
+    console.log(`[Wallet] User ${username} (${id}) attempting to link wallet: ${address}`);
+
+    if (chain !== 'TON') {
+        console.error(`[Wallet] Invalid chain: ${chain}`);
+        return res.status(400).json({ error: 'Invalid chain' });
+    }
+    if (!address) {
+        console.error(`[Wallet] Missing address`);
+        return res.status(400).json({ error: 'Address required' });
+    }
 
     try {
-        await query(
-            'INSERT INTO wallets (telegram_id, chain, address) VALUES ($1, $2, $3) ON CONFLICT (telegram_id, chain) DO UPDATE SET address = $3',
+        const result = await query(
+            'INSERT INTO wallets (telegram_id, chain, address) VALUES ($1, $2, $3) ON CONFLICT (telegram_id, chain) DO UPDATE SET address = $3 RETURNING *',
             [id, chain, address]
         );
-        res.json({ success: true });
+        console.log(`[Wallet] ✅ Successfully linked wallet for user ${id}:`, result.rows[0]);
+        res.json({ success: true, wallet: result.rows[0] });
     } catch (e) {
-        console.error(e);
+        console.error(`[Wallet] ❌ Failed to link wallet:`, e);
         res.status(500).json({ error: 'Wallet link failed' });
     }
 });
