@@ -7,6 +7,7 @@ import MinerCard from "@/components/miner-card"
 import ClickableAvatar from "@/components/clickable-avatar"
 import UpgradeCard from "@/components/upgrade-card"
 import BottomNav from "@/components/bottom-nav"
+import LeagueView from "@/components/league-view"
 import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react'
 
 import { useTelegram } from '@/hooks/useTelegram'
@@ -43,6 +44,27 @@ export default function Home() {
         .catch(console.error)
     }
   }, [initData])
+
+  // Bind Wallet to Backend
+  useEffect(() => {
+    if (initData && tonWallet && tonWallet.account.address) {
+      fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/connect-wallet`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-telegram-init-data': initData
+        },
+        body: JSON.stringify({
+          chain: 'TON',
+          address: tonWallet.account.address
+        })
+      })
+        .then(res => {
+          if (res.ok) toast.success("Wallet Linked!")
+        })
+        .catch(console.error)
+    }
+  }, [initData, tonWallet])
 
   // Sync Taps every 10 seconds
   useEffect(() => {
@@ -365,50 +387,7 @@ export default function Home() {
         )
 
       case "league":
-        return (
-          <div className="px-4 py-6">
-            <h2 className="text-2xl font-black mb-6">League</h2>
-            <div className="space-y-4">
-              <div className="bg-gradient-to-r from-yellow-400/20 to-yellow-300/20 border border-yellow-400/50 rounded-xl p-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <Crown className="w-5 h-5 text-yellow-400" />
-                  <div>
-                    <p className="font-black">Grandmaster</p>
-                    <p className="text-xs text-muted-foreground">Top 1%</p>
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground mb-3">You need 50M coins to reach this tier</p>
-                <div className="w-full bg-background rounded h-2">
-                  <div className="bg-yellow-400 h-2 rounded w-1/4" />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="bg-card border border-border rounded-lg p-4 flex justify-between items-center">
-                  <div>
-                    <p className="font-semibold">#1 player_0x</p>
-                    <p className="text-xs text-muted-foreground">125.3M coins</p>
-                  </div>
-                  <span className="text-lg">🥇</span>
-                </div>
-                <div className="bg-card border border-border rounded-lg p-4 flex justify-between items-center">
-                  <div>
-                    <p className="font-semibold">#2 cryptoking</p>
-                    <p className="text-xs text-muted-foreground">98.7M coins</p>
-                  </div>
-                  <span className="text-lg">🥈</span>
-                </div>
-                <div className="bg-card border border-border rounded-lg p-4 flex justify-between items-center">
-                  <div>
-                    <p className="font-semibold">#3 yourusername</p>
-                    <p className="text-xs text-muted-foreground">45.2M coins</p>
-                  </div>
-                  <span className="text-lg">🥉</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
+        return <LeagueView initData={initData} />
     }
   }
 

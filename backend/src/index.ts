@@ -7,6 +7,18 @@ import { query } from './db';
 
 dotenv.config();
 
+// Optimize DB on startup
+const initDb = async () => {
+    try {
+        await query('CREATE INDEX IF NOT EXISTS idx_users_points ON users (points DESC)');
+        console.log('Database optimized: Index created');
+    } catch (e) {
+        console.error('Failed to optimize DB:', e);
+    }
+};
+
+initDb();
+
 const app = express();
 app.use(cors());
 app.use(helmet());
@@ -62,7 +74,7 @@ app.post('/tap', authenticateTelegram, async (req: any, res) => {
     const { count } = req.body; // e.g. user claims they tapped 5 times since last sync
 
     // Basic Validation
-    if (!count || count <= 0 || count > 100) return res.status(400).json({ error: 'Invalid tap count' });
+    if (!count || count <= 0 || count > 1000) return res.status(400).json({ error: 'Invalid tap count' });
 
     try {
         const userRes = await query('SELECT energy, points, last_tap_at FROM users WHERE telegram_id = $1', [id]);
@@ -100,9 +112,6 @@ app.post('/connect-wallet', authenticateTelegram, async (req: any, res) => {
     if (!address) return res.status(400).json({ error: 'Address required' });
 
     try {
-        // TODO: Verify signature here to prove ownership of address
-        // For MVP/Demo, we accept the address.
-
         await query(
             'INSERT INTO wallets (telegram_id, chain, address) VALUES ($1, $2, $3) ON CONFLICT (telegram_id, chain) DO UPDATE SET address = $3',
             [id, chain, address]
@@ -111,6 +120,52 @@ app.post('/connect-wallet', authenticateTelegram, async (req: any, res) => {
     } catch (e) {
         console.error(e);
         res.status(500).json({ error: 'Wallet link failed' });
+    }
+});
+
+// 4. Leaderboard
+let leaderboardCache = {
+    data: null as any,
+    lastUpdated: 0
+};
+
+app.get('/leaderboard', authenticateTelegram, async (req: any, res) => {
+    const { id } = req.user;
+    const now = Date.now();
+
+    try {
+        // 1. Get Top 50 (Cached for 5s)
+        if (!leaderboardCache.data || (now - leaderboardCache.lastUpdated > 5000)) {
+            const top50Res = await query(`
+                SELECT username, points 
+                FROM users 
+                ORDER BY points DESC 
+                LIMIT 50
+            `);
+            leaderboardCache.data = top50Res.rows;
+            leaderboardCache.lastUpdated = now;
+        }
+
+        // 2. Get Current User Rank (Real-time)
+        // We still fetch this real-time so the user sees their own progress instantly
+        const userRes = await query('SELECT points FROM users WHERE telegram_id = $1', [id]);
+        if (userRes.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+
+        const userPoints = userRes.rows[0].points;
+        const rankRes = await query('SELECT COUNT(*) as older FROM users WHERE points > $1', [userPoints]);
+        const rank = parseInt(rankRes.rows[0].older) + 1;
+
+        res.json({
+            topUsers: leaderboardCache.data,
+            currentUser: {
+                rank,
+                points: userPoints,
+                username: req.user.username
+            }
+        });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Leaderboard failed' });
     }
 });
 
