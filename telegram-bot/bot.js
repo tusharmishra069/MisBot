@@ -23,6 +23,8 @@ const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 console.log('✅ MISBOT Telegram Bot is running...');
 
 
+
+
 // Welcome message text
 const WELCOME_MESSAGE = `Welcome to MISBOT! ⚡💰
 

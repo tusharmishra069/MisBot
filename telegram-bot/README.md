@@ -42,14 +42,35 @@ This bot sends welcome messages with interactive buttons when users start your b
 ### Option 1: Run Locally
 Just run `npm start` on your computer (bot must stay running)
 
-### Option 2: Deploy to Cloud
-Deploy to:
-- **Render** (free tier available)
-- **Railway** (free tier available)
-- **Heroku**
-- **DigitalOcean**
+### Option 2: Deploy to Render (Recommended)
 
-Set environment variables on your hosting platform.
+**Deploy as Background Worker** (not Web Service):
+
+1. Go to [render.com](https://render.com)
+2. Click **"New +"** → **"Background Worker"**
+3. Connect your GitHub repository
+4. Configure:
+   - **Name:** `misbot-telegram-bot`
+   - **Root Directory:** `telegram-bot`
+   - **Build Command:** `npm install`
+   - **Start Command:** `npm start`
+   - **Instance Type:** Free
+5. Add environment variables:
+   - `BOT_TOKEN` = Your bot token from @BotFather
+   - `WEB_APP_URL` = Your frontend URL (e.g., https://mis-bot.vercel.app)
+6. Click **"Create Background Worker"**
+7. Wait for deployment to complete
+
+**Why Background Worker?**
+- Telegram bots with polling don't need to expose HTTP ports
+- Background Workers are designed for long-running processes
+- More efficient than Web Services for bots
+
+### Option 3: Other Platforms
+- **Railway** (free tier available)
+- **Heroku** (paid)
+- **DigitalOcean** (paid)
+- **AWS EC2** (paid)
 
 ## Customization
 
