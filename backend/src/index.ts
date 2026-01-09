@@ -10,10 +10,14 @@ dotenv.config();
 // Optimize DB on startup
 const initDb = async () => {
     try {
+        await query('SELECT NOW()'); // Test Connection
+        console.log('✅ Database Connected Successfully');
+
         await query('CREATE INDEX IF NOT EXISTS idx_users_points ON users (points DESC)');
-        console.log('Database optimized: Index created');
+        console.log('✅ Database Optimized: Indexes Verified');
     } catch (e) {
-        console.error('Failed to optimize DB:', e);
+        console.error('❌ Database Connection Failed:', e);
+        process.exit(1); // Fatal error if DB is down
     }
 };
 
@@ -27,16 +31,30 @@ app.use(express.json());
 // --- Middleware ---
 const authenticateTelegram = (req: any, res: any, next: any) => {
     const initData = req.headers['x-telegram-init-data'];
-    if (!initData) return res.status(401).json({ error: 'Missing initData' });
+
+    if (!initData) {
+        console.warn(`[Auth] Rejected: Missing initData. Headers:`, req.headers);
+        return res.status(401).json({ error: 'Missing initData' });
+    }
 
     try {
+        // Log the received data (truncated for safety)
+        // console.log(`[Auth] Verifying: ${initData.substring(0, 20)}...`);
+
         const isValid = verifyTelegramWebAppData(initData as string);
-        if (!isValid) return res.status(403).json({ error: 'Invalid initData signature' });
+
+        if (!isValid) {
+            console.error(`[Auth] ❌ Signature Verification Failed!`);
+            console.error(`[Auth] Hint: Check your BOT_TOKEN in backend .env`);
+            return res.status(403).json({ error: 'Invalid initData signature' });
+        }
 
         const user = parseUserData(initData as string);
         req.user = user;
+        // console.log(`[Auth] ✅ Authenticated User: ${user.username} (${user.id})`);
         next();
     } catch (e) {
+        console.error(`[Auth] Crash during verification:`, e);
         return res.status(403).json({ error: 'Auth failed' });
     }
 };

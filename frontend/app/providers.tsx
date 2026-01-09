@@ -8,7 +8,7 @@ const queryClient = new QueryClient();
 
 //  TonConnect Manifest
 //  TonConnect Manifest
-const manifestUrl = process.env.NEXT_PUBLIC_TON_MANIFEST_URL || 'https://mis-bot.vercel.app/tonconnect-manifest.json';
+const manifestUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://mis-bot.vercel.app'}/api/manifest`;
 
 export function Providers({ children }: { children: ReactNode }) {
   return (

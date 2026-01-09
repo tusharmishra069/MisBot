@@ -14,14 +14,17 @@ import { useTelegram } from '@/hooks/useTelegram'
 
 export default function Home() {
   const { user, initData } = useTelegram()
+
+  // Dev Mode Check
+  const isDev = process.env.NODE_ENV !== 'production';
+  const authData = initData || (isDev ? 'dev_data' : '');
+
   const [coins, setCoins] = useState(0)
   const [clickPower, setClickPower] = useState(1)
   const [energy, setEnergy] = useState(1000) // Added Energy State
   const [perSecond, setPerSecond] = useState(5)
   const [activeTab, setActiveTab] = useState<"mine" | "earn" | "upgrades" | "league">("mine")
   const [clickAnimation, setClickAnimation] = useState(false)
-
-
 
   // Wallet States
   const [tonConnectUI] = useTonConnectUI()
@@ -32,9 +35,9 @@ export default function Home() {
 
   // Sync User on Load
   useEffect(() => {
-    if (initData) {
+    if (authData) {
       fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/user`, {
-        headers: { 'x-telegram-init-data': initData }
+        headers: { 'x-telegram-init-data': authData }
       })
         .then(res => res.json())
         .then(data => {
@@ -43,16 +46,16 @@ export default function Home() {
         })
         .catch(console.error)
     }
-  }, [initData])
+  }, [authData])
 
   // Bind Wallet to Backend
   useEffect(() => {
-    if (initData && tonWallet && tonWallet.account.address) {
+    if (authData && tonWallet && tonWallet.account.address) {
       fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/connect-wallet`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-telegram-init-data': initData
+          'x-telegram-init-data': authData
         },
         body: JSON.stringify({
           chain: 'TON',
@@ -64,13 +67,13 @@ export default function Home() {
         })
         .catch(console.error)
     }
-  }, [initData, tonWallet])
+  }, [authData, tonWallet])
 
   // Sync Taps every 10 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       const count = unsavedTapsRef.current
-      if (count > 0 && initData) {
+      if (count > 0 && authData) {
         // Reset ref immediately to avoid double counting if request is slow
         unsavedTapsRef.current = 0
 
@@ -78,7 +81,7 @@ export default function Home() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-telegram-init-data': initData
+            'x-telegram-init-data': authData
           },
           body: JSON.stringify({ count })
         })
@@ -95,7 +98,7 @@ export default function Home() {
     }, 10000)
 
     return () => clearInterval(interval)
-  }, [initData])
+  }, [authData])
 
   // Constants
   const RATE_LIMIT_WINDOW = 10000 // 10 seconds
@@ -387,7 +390,7 @@ export default function Home() {
         )
 
       case "league":
-        return <LeagueView initData={initData} />
+        return <LeagueView initData={authData} />
     }
   }
 
