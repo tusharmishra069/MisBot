@@ -42,6 +42,20 @@ export async function mintMisbotTokens(
             return { success: false, error: 'Admin mnemonic not configured' };
         }
 
+        // Validate and clean addresses
+        const cleanMinterAddress = JETTON_MINTER_ADDRESS.trim();
+        const cleanRecipientAddress = recipientAddress.trim();
+
+        // Validate recipient address format
+        if (!cleanRecipientAddress || cleanRecipientAddress.length < 10) {
+            return { success: false, error: 'Invalid recipient address' };
+        }
+
+        // Validate minter address format
+        if (!cleanMinterAddress || cleanMinterAddress.length < 10) {
+            return { success: false, error: 'Invalid minter address configuration' };
+        }
+
         const client = initTonClient();
 
         // Get admin wallet
@@ -55,11 +69,29 @@ export async function mintMisbotTokens(
         // Get current seqno
         const seqno = await contract.getSeqno();
 
+        // Parse addresses with error handling
+        let recipientAddr: Address;
+        let minterAddr: Address;
+
+        try {
+            recipientAddr = Address.parse(cleanRecipientAddress);
+        } catch (err: any) {
+            console.error('Failed to parse recipient address:', cleanRecipientAddress, err);
+            return { success: false, error: `Invalid recipient address format: ${err.message}` };
+        }
+
+        try {
+            minterAddr = Address.parse(cleanMinterAddress);
+        } catch (err: any) {
+            console.error('Failed to parse minter address:', cleanMinterAddress, err);
+            return { success: false, error: `Invalid minter address format: ${err.message}` };
+        }
+
         // Create mint message
         const mintBody = beginCell()
             .storeUint(21, 32)                                    // Mint op
             .storeUint(0, 64)                                     // Query ID
-            .storeAddress(Address.parse(recipientAddress))        // Recipient
+            .storeAddress(recipientAddr)                          // Recipient
             .storeCoins(BigInt(Math.floor(amount * 1e9)))        // Amount in nanoMISBOT
             .endCell();
 
@@ -69,7 +101,7 @@ export async function mintMisbotTokens(
             seqno: seqno,
             messages: [
                 internal({
-                    to: JETTON_MINTER_ADDRESS,
+                    to: minterAddr,
                     value: '0.05', // Gas for minting
                     body: mintBody,
                 })
