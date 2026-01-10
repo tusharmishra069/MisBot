@@ -296,7 +296,77 @@ export const query = (text: string, params?: any[]) =>
 - `verifyTelegramWebAppData(initData: string): boolean`
 - `parseUserData(initData: string): TelegramUser`
 
-#### 3.2.3 Main Server (`index.ts`)
+#### 3.2.3 Jetton Utils Module (`jetton-utils.ts`)
+
+**Purpose:** TON blockchain integration for MISBOT token operations
+
+**Dependencies:**
+- `@ton/ton` - TON SDK for blockchain interactions
+- `@ton/crypto` - Cryptographic utilities for wallet management
+
+**Key Functions:**
+
+1. **`initTonClient()`**
+   - Initializes TON client connection
+   - Configures network (testnet/mainnet)
+   - Sets up admin wallet from mnemonic
+   
+   ```typescript
+   export function initTonClient() {
+     const network = process.env.TON_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
+     tonClient = new TonClient({
+       endpoint: `https://${network}.toncenter.com/api/v2/jsonRPC`
+     });
+   }
+   ```
+
+2. **`mintMisbotTokens(recipientAddress: string, amount: number)`**
+   - Mints MISBOT tokens to user's TON wallet
+   - Parameters:
+     - `recipientAddress`: TON wallet address (UQD...)
+     - `amount`: Number of MISBOT tokens to mint
+   - Returns: `{ success: boolean, error?: string }`
+   - Exchange rate: 1000 game coins = 1 MISBOT
+   
+   **Process:**
+   1. Validates recipient address
+   2. Creates internal transfer message
+   3. Signs transaction with admin wallet
+   4. Sends to blockchain
+   5. Returns success/failure status
+
+3. **`getMisbotBalance(walletAddress: string)`**
+   - Queries user's MISBOT token balance
+   - Parameters:
+     - `walletAddress`: TON wallet address
+   - Returns: Balance in MISBOT (converted from nano-MISBOT)
+   
+   **Implementation:**
+   ```typescript
+   const jettonWallet = await getJettonWallet(walletAddress);
+   const balance = await jettonWallet.getBalance();
+   return Number(balance) / 1e9; // Convert to MISBOT
+   ```
+
+4. **`getTotalSupply()`**
+   - Queries total MISBOT token supply from blockchain
+   - Returns: Total supply in MISBOT
+   - Used for transparency and tokenomics display
+
+**Environment Variables:**
+```bash
+TON_MINTER_ADDRESS=EQD...  # Jetton minter contract address
+TON_ADMIN_MNEMONIC="word1 word2 ... word24"  # Admin wallet mnemonic
+TON_NETWORK=testnet  # or mainnet
+```
+
+**Security Considerations:**
+- Admin mnemonic stored in environment variables only
+- Never exposed to frontend or API responses
+- All minting operations server-side only
+- Rate limiting on claim endpoint to prevent abuse
+
+#### 3.2.4 Main Server (`index.ts`)
 
 **Sections:**
 
@@ -865,12 +935,59 @@ CREATE TABLE tap_logs (
 - User behavior tracking
 - Debugging
 
+#### 6.1.4 `misbot_claims` Table
+
+**Purpose:** Track MISBOT token claims
+
+```sql
+CREATE TABLE misbot_claims (
+    id SERIAL PRIMARY KEY,
+    telegram_id BIGINT NOT NULL,
+    ton_address VARCHAR(255) NOT NULL,
+    coins_spent BIGINT NOT NULL,
+    misbot_amount VARCHAR(50) NOT NULL,
+    tx_hash VARCHAR(255),
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_misbot_claims_telegram_id ON misbot_claims(telegram_id);
+CREATE INDEX idx_misbot_claims_status ON misbot_claims(status);
+CREATE INDEX idx_misbot_claims_created_at ON misbot_claims(created_at DESC);
+```
+
+**Columns:**
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | SERIAL | Auto-increment primary key |
+| `telegram_id` | BIGINT | User who claimed tokens |
+| `ton_address` | VARCHAR(255) | TON wallet address |
+| `coins_spent` | BIGINT | Game coins exchanged |
+| `misbot_amount` | VARCHAR(50) | MISBOT tokens minted |
+| `tx_hash` | VARCHAR(255) | Blockchain transaction hash |
+| `status` | VARCHAR(20) | Claim status (pending/completed/failed) |
+| `created_at` | TIMESTAMP | Claim creation time |
+| `updated_at` | TIMESTAMP | Last update time |
+
+**Indexes:**
+- `idx_misbot_claims_telegram_id` - Fast user claim lookups
+- `idx_misbot_claims_status` - Filter by status
+- `idx_misbot_claims_created_at` - Order by date
+
+**Usage:**
+- Track token claims history
+- Monitor claim status
+- Audit blockchain transactions
+
 ### 6.2 Relationships
 
 ```
 users (1) ──< (N) wallets
   │
-  └──< (N) tap_logs
+  ├──< (N) tap_logs
+  │
+  └──< (N) misbot_claims
 ```
 
 ### 6.3 Sample Queries
@@ -1125,6 +1242,135 @@ x-telegram-init-data: dev_data
 **Caching:**
 - Top 50 cached for 5 seconds
 - User rank fetched in real-time
+
+---
+
+#### 7.2.7 Claim MISBOT Tokens
+
+**Endpoint:** `POST /claim-misbot`
+
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "tonAddress": "UQD...",
+  "coinsToExchange": 5000
+}
+```
+
+**Validation:**
+- `tonAddress` must not be empty
+- `coinsToExchange` must be >= 1000 and divisible by 1000
+- User must have enough coins
+
+**Response:**
+```json
+{
+  "success": true,
+  "misbotAmount": 5,
+  "coinsSpent": 5000,
+  "message": "Successfully minted 5 MISBOT!"
+}
+```
+
+**Status Codes:**
+- `200 OK` - Success
+- `400 Bad Request` - Invalid input or insufficient coins
+- `404 Not Found` - User not found
+- `500 Internal Server Error` - Minting failed
+
+**Behavior:**
+1. Validates user has enough coins
+2. Calculates MISBOT amount (1000 coins = 1 MISBOT)
+3. Mints tokens to TON address via blockchain
+4. Deducts coins from user balance
+5. Records claim in database
+
+---
+
+#### 7.2.8 Get MISBOT Balance
+
+**Endpoint:** `GET /misbot-balance?tonAddress=UQD...`
+
+**Authentication:** Required
+
+**Query Parameters:**
+- `tonAddress` (required) - TON wallet address
+
+**Response:**
+```json
+{
+  "balance": 10.5
+}
+```
+
+**Status Codes:**
+- `200 OK` - Success
+- `400 Bad Request` - Missing TON address
+- `500 Internal Server Error` - Failed to fetch balance
+
+**Behavior:**
+- Queries TON blockchain for user's MISBOT token balance
+- Returns balance in MISBOT (not nano-MISBOT)
+
+---
+
+#### 7.2.9 Get Total MISBOT Supply
+
+**Endpoint:** `GET /misbot-supply`
+
+**Authentication:** None required
+
+**Response:**
+```json
+{
+  "totalSupply": 1000000
+}
+```
+
+**Status Codes:**
+- `200 OK` - Success
+- `500 Internal Server Error` - Failed to fetch supply
+
+**Behavior:**
+- Queries TON blockchain for total MISBOT token supply
+- Returns total supply in MISBOT
+
+---
+
+#### 7.2.10 Get Claim History
+
+**Endpoint:** `GET /misbot-history`
+
+**Authentication:** Required
+
+**Response:**
+```json
+{
+  "claims": [
+    {
+      "id": 1,
+      "telegram_id": 123456789,
+      "ton_address": "UQD...",
+      "coins_spent": 5000,
+      "misbot_amount": "5",
+      "tx_hash": null,
+      "status": "completed",
+      "created_at": "2026-01-10T00:00:00.000Z",
+      "updated_at": "2026-01-10T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+**Status Codes:**
+- `200 OK` - Success
+- `500 Internal Server Error` - Database error
+
+**Behavior:**
+- Returns last 50 claims for authenticated user
+- Ordered by creation date (newest first)
 
 ---
 

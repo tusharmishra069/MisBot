@@ -40,7 +40,9 @@
 
 ### 💰 Web3 Integration
 - **TON Wallet Connection** - Secure wallet linking via TonConnect
-- **Blockchain Ready** - Built for future token airdrops
+- **MISBOT Token System** - Exchange game coins for real MISBOT tokens (1000 coins = 1 MISBOT)
+- **Token Claims** - Mint MISBOT tokens directly to your TON wallet
+- **Balance Tracking** - Real-time MISBOT balance and claim history
 - **Persistent Data** - All progress saved to PostgreSQL database
 
 ### 🔐 Security & Performance
@@ -66,6 +68,7 @@
 - **Database:** PostgreSQL with pg driver
 - **Authentication:** Telegram WebApp initData validation
 - **Security:** Helmet, CORS, express-rate-limit, express-validator
+- **Blockchain:** TON SDK (@ton/ton, @ton/crypto)
 - **Environment:** dotenv
 
 ### Telegram Bot
@@ -103,6 +106,10 @@
 │  │  /user       │  │  /tap        │  │ /connect-    │      │
 │  │  endpoint    │  │  endpoint    │  │  wallet      │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │ /claim-      │  │ /misbot-     │  │ /misbot-     │      │
+│  │  misbot      │  │  balance     │  │  history     │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
 └────────────────────────┬────────────────────────────────────┘
                          │ SQL Queries
                          ▼
@@ -112,6 +119,10 @@
 │  │  users       │  │  wallets     │  │  tap_logs    │      │
 │  │  table       │  │  table       │  │  table       │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
+│  ┌──────────────┐  ┌──────────────┐                         │
+│  │ misbot_      │  │   claims     │                         │
+│  │  claims      │  │   table      │                         │
+│  └──────────────┘  └──────────────┘                         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -120,7 +131,8 @@
 1. **User Authentication:** Telegram WebApp → Backend validates `initData`
 2. **Tap Action:** Frontend → Backend (rate limited) → Database
 3. **Wallet Connection:** TonConnect → Frontend → Backend → Database
-4. **Leaderboard:** Frontend → Backend (cached 5s) → Database
+4. **Token Claims:** Frontend → Backend → TON Blockchain → Database
+5. **Leaderboard:** Frontend → Backend (cached 5s) → Database
 
 ---
 
@@ -256,6 +268,7 @@ MisBot/
 │   ├── src/
 │   │   ├── index.ts        # Main server file
 │   │   ├── db.ts           # Database configuration
+│   │   ├── jetton-utils.ts # MISBOT token minting utilities
 │   │   └── utils/          # Utility functions
 │   ├── .env.example        # Environment template
 │   └── package.json
@@ -277,7 +290,9 @@ MisBot/
 │   └── package.json
 │
 ├── database/               # Database schemas
-│   └── init.sql            # Initial schema
+│   ├── init.sql            # Initial schema
+│   └── migrations/         # Database migrations
+│       └── 004_misbot_claims.sql  # MISBOT claims table
 │
 ├── PRODUCTION_CHECKLIST.md # Deployment guide
 └── README.md               # This file
@@ -295,6 +310,11 @@ DATABASE_URL=postgresql://user:password@host:5432/database
 
 # Telegram
 BOT_TOKEN=your_bot_token_from_botfather
+
+# TON Blockchain (for MISBOT token minting)
+TON_MINTER_ADDRESS=your_jetton_minter_address
+TON_ADMIN_MNEMONIC="your 24 word mnemonic phrase"
+TON_NETWORK=testnet  # or mainnet
 
 # Server
 PORT=3001
