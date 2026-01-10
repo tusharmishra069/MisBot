@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import { body, validationResult } from 'express-validator';
 import { verifyTelegramWebAppData, parseUserData } from './utils/telegramAuth';
 import { query } from './db';
+import { initTonClient, mintMisbotTokens, getMisbotBalance, getTotalSupply } from './jetton-utils';
 
 dotenv.config();
 
@@ -17,6 +18,9 @@ const initDb = async () => {
 
         await query('CREATE INDEX IF NOT EXISTS idx_users_points ON users (points DESC)');
         console.log('✅ Database Optimized: Indexes Verified');
+
+        // Initialize TON client for Jetton operations
+        initTonClient();
     } catch (e) {
         console.error('❌ Database Connection Failed:', e);
         process.exit(1); // Fatal error if DB is down
@@ -213,16 +217,11 @@ app.post('/connect-wallet', authenticateTelegram, [
     const { id, username } = req.user;
     const { chain, address } = req.body;
 
-    if (process.env.NODE_ENV !== 'production') {
-        console.log(`[Wallet] User ${username} (${id}) attempting to link wallet: ${address}`);
-    }
-
     try {
         const result = await query(
             'INSERT INTO wallets (telegram_id, chain, address) VALUES ($1, $2, $3) ON CONFLICT (telegram_id, chain) DO UPDATE SET address = $3 RETURNING *',
             [id, chain, address]
         );
-        console.log(`[Wallet] ✅ Successfully linked wallet for user ${id}:`, result.rows[0]);
         res.json({ success: true, wallet: result.rows[0] });
     } catch (e) {
         console.error(`[Wallet] ❌ Failed to link wallet:`, e);
@@ -230,7 +229,7 @@ app.post('/connect-wallet', authenticateTelegram, [
     }
 });
 
-// 4. Leaderboard
+// 5. Leaderboard
 let leaderboardCache = {
     data: null as any,
     lastUpdated: 0
@@ -273,6 +272,126 @@ app.get('/leaderboard', authenticateTelegram, async (req: any, res) => {
     } catch (e) {
         console.error(e);
         res.status(500).json({ error: 'Leaderboard failed' });
+    }
+});
+
+// ==================== MISBOT TOKEN ENDPOINTS ====================
+
+// Get MISBOT balance
+app.get('/misbot-balance', authenticateTelegram, async (req: any, res: any) => {
+    try {
+        const { tonAddress } = req.query;
+
+        if (!tonAddress) {
+            return res.status(400).json({ error: 'TON address required' });
+        }
+
+        const balance = await getMisbotBalance(tonAddress as string);
+        res.json({ balance });
+    } catch (error: any) {
+        console.error('Failed to get MISBOT balance:', error);
+        res.status(500).json({ error: 'Failed to get balance' });
+    }
+});
+
+// Get total MISBOT supply
+app.get('/misbot-supply', async (req, res) => {
+    try {
+        const totalSupply = await getTotalSupply();
+        res.json({ totalSupply });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to get supply' });
+    }
+});
+
+// Claim MISBOT tokens
+app.post('/claim-misbot', authenticateTelegram, async (req: any, res: any) => {
+    const { id } = req.user;
+    const { tonAddress, coinsToExchange } = req.body;
+
+    // Validate input
+    if (!tonAddress) {
+        return res.status(400).json({ error: 'TON address required' });
+    }
+
+    if (!coinsToExchange || coinsToExchange < 1000 || coinsToExchange % 1000 !== 0) {
+        return res.status(400).json({
+            error: 'Must exchange multiples of 1000 coins'
+        });
+    }
+
+    try {
+        // Check user has enough coins
+        const userResult = await query(
+            'SELECT points FROM users WHERE telegram_id = $1',
+            [id]
+        );
+
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const points = Number(userResult.rows[0].points);
+        if (points < coinsToExchange) {
+            return res.status(400).json({
+                error: `Not enough coins. You have ${points}, need ${coinsToExchange}`
+            });
+        }
+
+        // Calculate MISBOT amount (1000 coins = 1 MISBOT)
+        const misbotAmount = coinsToExchange / 1000;
+
+        // Mint MISBOT tokens
+        const mintResult = await mintMisbotTokens(tonAddress, misbotAmount);
+
+        if (!mintResult.success) {
+            return res.status(500).json({
+                error: mintResult.error || 'Failed to mint tokens'
+            });
+        }
+
+        // Deduct coins from user
+        await query(
+            'UPDATE users SET points = points - $1 WHERE telegram_id = $2',
+            [coinsToExchange, id]
+        );
+
+        // Record claim in database
+        await query(
+            `INSERT INTO misbot_claims 
+             (telegram_id, ton_address, coins_spent, misbot_amount, status)
+             VALUES ($1, $2, $3, $4, 'completed')`,
+            [id, tonAddress, coinsToExchange, misbotAmount.toString()]
+        );
+
+        res.json({
+            success: true,
+            misbotAmount,
+            coinsSpent: coinsToExchange,
+            message: `Successfully minted ${misbotAmount} MISBOT!`
+        });
+    } catch (error: any) {
+        console.error('Claim MISBOT error:', error);
+        res.status(500).json({ error: 'Failed to process claim' });
+    }
+});
+
+// Get user's MISBOT claim history
+app.get('/misbot-history', authenticateTelegram, async (req: any, res: any) => {
+    try {
+        const { id } = req.user;
+
+        const result = await query(
+            `SELECT * FROM misbot_claims 
+             WHERE telegram_id = $1 
+             ORDER BY created_at DESC 
+             LIMIT 50`,
+            [id]
+        );
+
+        res.json({ claims: result.rows });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to get history' });
     }
 });
 

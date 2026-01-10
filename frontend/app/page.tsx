@@ -37,50 +37,99 @@ export default function Home() {
   const [walletLinkStatus, setWalletLinkStatus] = useState<string>('Not attempted')
   const [walletLinkError, setWalletLinkError] = useState<string>('')
 
+  // MISBOT Token states
+  const [misbotBalance, setMisbotBalance] = useState(0)
+  const [coinsToExchange, setCoinsToExchange] = useState(1000)
+  const [misbotClaiming, setMisbotClaiming] = useState(false)
+
+  // Load MISBOT balance
+  useEffect(() => {
+    if (tonWallet && authData) {
+      fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/misbot-balance?tonAddress=${tonWallet.account.address}`, {
+        headers: { 'x-telegram-init-data': authData }
+      })
+        .then(res => res.json())
+        .then(data => setMisbotBalance(data.balance || 0))
+        .catch(err => console.error('Failed to load MISBOT balance:', err));
+    }
+  }, [tonWallet, authData]);
+
+  // Claim MISBOT tokens
+  const claimMisbot = async () => {
+    if (!tonWallet) {
+      toast.error('Connect TON wallet first');
+      return;
+    }
+
+    if (coins < coinsToExchange) {
+      toast.error(`Need ${coinsToExchange} coins to exchange`);
+      return;
+    }
+
+    setMisbotClaiming(true);
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/claim-misbot`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-telegram-init-data': authData
+        },
+        body: JSON.stringify({
+          tonAddress: tonWallet.account.address,
+          coinsToExchange
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(`🎉 ${data.misbotAmount} MISBOT minted!`);
+        setCoins(c => c - coinsToExchange);
+        setMisbotBalance(b => b + data.misbotAmount);
+      } else {
+        toast.error(data.error || 'Failed to claim MISBOT');
+      }
+    } catch (error: any) {
+      toast.error('Network error: ' + error.message);
+    } finally {
+      setMisbotClaiming(false);
+    }
+  };
+
   // Sync User on Load
   useEffect(() => {
     if (isDev) {
-      console.log('[Load] Component mounted');
-      console.log('[Load] authData:', authData ? 'Present' : 'Missing');
-      console.log('[Load] Backend URL:', process.env.NEXT_PUBLIC_BACKEND_URL);
+      // Development mode - use mock data
+      setCoins(1000);
+      setEnergy(1000);
+      return;
     }
 
-    if (authData) {
-      if (isDev) console.log('[Load] Fetching user data...');
-      fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/user`, {
-        headers: { 'x-telegram-init-data': authData }
-      })
-        .then(res => {
-          if (isDev) console.log('[Load] Response status:', res.status);
-          return res.json();
-        })
-        .then(data => {
-          if (isDev) {
-            console.log('[Load] User data received:', data);
-            console.log('[Load] Points from DB:', data.points);
-            console.log('[Load] Energy from DB:', data.energy);
-          }
+    if (!authData) return;
 
-          if (data.points) {
-            const pointsValue = Number(data.points);
-            if (isDev) console.log('[Load] Setting coins to:', pointsValue);
+    const loadUserData = async () => {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/user`, {
+          headers: { 'x-telegram-init-data': authData }
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+
+          if (data && typeof data.points !== 'undefined') {
+            const pointsValue = Number(data.points) || 0;
             setCoins(pointsValue);
-          } else {
-            if (isDev) console.warn('[Load] No points in response, keeping at 0');
+            setEnergy(Number(data.energy) || 1000);
           }
+        }
+      } catch (err) {
+        // Silent fail in production
+      }
+    };
 
-          if (data.energy) {
-            setEnergy(Number(data.energy));
-          }
-        })
-        .catch(err => {
-          console.error('[Load] Error fetching user data:', err);
-          toast.error('Failed to load user data');
-        })
-    } else {
-      if (isDev) console.warn('[Load] No authData - cannot fetch user data');
-    }
-  }, [authData, isDev])
+    loadUserData();
+  }, [authData, isDev]);
 
   // Bind Wallet to Backend (optimized to prevent duplicate calls)
   const walletLinkAttemptedRef = useRef<string | null>(null);
@@ -404,40 +453,81 @@ export default function Home() {
       case "earn":
         return (
           <div className="px-4 py-6">
-            <h2 className="text-2xl font-black mb-6">Earn More</h2>
+            <h2 className="text-2xl font-black mb-6">Earn MISBOT</h2>
             <div className="space-y-4">
-              <MinerCard
-                name="Solo Mining"
-                icon="⛏️"
-                description="Earn passive coins"
-                income={5}
-                cost={1000}
-                owned={1}
-              />
-              <MinerCard
-                name="Bot Network"
-                icon="🤖"
-                description="Automated earnings"
-                income={25}
-                cost={5000}
-                owned={0}
-              />
-              <MinerCard
-                name="Server Farm"
-                icon="🖥️"
-                description="Professional mining"
-                income={100}
-                cost={25000}
-                owned={0}
-              />
-              <MinerCard
-                name="AI Cluster"
-                icon="🧠"
-                description="Next-gen power"
-                income={500}
-                cost={100000}
-                owned={0}
-              />
+              {/* MISBOT Token Exchange Card */}
+              <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center text-2xl">
+                      🪙
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg">MISBOT Token</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Exchange coins for MISBOT tokens
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* MISBOT Balance */}
+                <div className="bg-black/20 rounded-lg p-3 mb-3">
+                  <p className="text-xs text-muted-foreground mb-1">Your MISBOT Balance</p>
+                  <p className="text-2xl font-bold text-green-400">{misbotBalance.toFixed(2)} MIS</p>
+                </div>
+
+                {/* Exchange Input */}
+                <div className="mb-3">
+                  <label className="text-sm font-medium mb-2 block">Coins to Exchange</label>
+                  <input
+                    type="number"
+                    value={coinsToExchange}
+                    onChange={(e) => setCoinsToExchange(Number(e.target.value))}
+                    min="1000"
+                    step="1000"
+                    className="w-full p-2 rounded-lg bg-gray-800 border border-gray-700 text-white"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    You'll receive: <span className="font-bold text-green-400">{(coinsToExchange / 1000).toFixed(1)} MISBOT</span>
+                  </p>
+                </div>
+
+                {/* Claim Button */}
+                <button
+                  onClick={claimMisbot}
+                  disabled={coins < coinsToExchange || misbotClaiming || !tonWallet}
+                  className={`w-full py-3 rounded-lg font-bold transition-all ${coins >= coinsToExchange && tonWallet && !misbotClaiming
+                    ? 'bg-green-500 hover:bg-green-600 text-white'
+                    : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                    }`}
+                >
+                  {misbotClaiming ? 'Minting...' : `Exchange for ${(coinsToExchange / 1000).toFixed(1)} MISBOT`}
+                </button>
+
+                {!tonWallet && (
+                  <p className="text-xs text-center mt-2 text-yellow-400">
+                    ⚠️ Connect TON wallet to claim
+                  </p>
+                )}
+
+                {coins < coinsToExchange && tonWallet && (
+                  <p className="text-xs text-center mt-2 text-yellow-400">
+                    Need {coinsToExchange - coins} more coins
+                  </p>
+                )}
+              </div>
+
+              {/* Info Card */}
+              <div className="bg-card border border-border rounded-lg p-4">
+                <h3 className="font-bold mb-2">💡 How it Works</h3>
+                <ul className="text-sm text-muted-foreground space-y-2">
+                  <li>• Mine coins by tapping in the game</li>
+                  <li>• Exchange 1,000 coins for 1 MISBOT token</li>
+                  <li>• MISBOT tokens are on TON testnet</li>
+                  <li>• View your tokens in your TON wallet</li>
+                </ul>
+              </div>
             </div>
           </div>
         )
